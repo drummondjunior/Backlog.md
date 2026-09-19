@@ -46,4 +46,25 @@ describe("canon node codec", () => {
 	test("parseTask delega ao codec quando o conteúdo é nó do canon", () => {
 		expect(parseTask(node("11.o", "TODO", "Dieta de agentes. Resto.")).id).toBe("11.o");
 	});
+
+	// nó 1.44.6 — chave legada (tipo/gerado_em/...) lê igual à atual (kind/created_date/...), nó só
+	// com uma forma, só com a outra, ou misturado.
+	test("lê nó só com a chave ATUAL (kind/created_date) igual ao legado", () => {
+		const raw = `---\nid: 1.40\nparent: "1"\nstatus: DOING\nkind: trabalho\ncreated_date: "2026-09-18 12:00"\n---\n# 1.40\n\n\`\`\`canon\n1.40   Chave atual.\n\`\`\`\n`;
+		const t = parseCanonNode(raw);
+		expect(t.labels).toEqual(["trabalho"]);
+		expect(t.createdDate).toBe("2026-09-18 12:00");
+	});
+	test("nó misturado (kind novo + gerado_em legado) lê os dois campos sem conflito", () => {
+		const raw = `---\nid: 1.40\nparent: "1"\nstatus: DOING\nkind: trabalho\ngerado_em: 2026-09-18T12:00:00Z\n---\n# 1.40\n\n\`\`\`canon\n1.40   Misturado.\n\`\`\`\n`;
+		const t = parseCanonNode(raw);
+		expect(t.labels).toEqual(["trabalho"]);
+		expect(t.createdDate).toBe("2026-09-18 12:00");
+	});
+	test("desenho legado é lido como referência igual a design atual", () => {
+		const legado = `---\nid: 1.40\nparent: "1"\nstatus: TODO\ntipo: trabalho\ndesenho: docs/d.md\n---\n# 1.40\n\n\`\`\`canon\n1.40   x\n\`\`\`\n`;
+		const atual = legado.replace("desenho:", "design:");
+		expect(parseCanonNode(legado).references).toContain("docs/d.md");
+		expect(parseCanonNode(atual).references).toContain("docs/d.md");
+	});
 });

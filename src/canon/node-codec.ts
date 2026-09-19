@@ -18,6 +18,7 @@ import { normalizeDueDate } from "../utils/due-date.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
 import { loadBacklogMap } from "./backlog-map.ts";
 import { isCanonId } from "./identity.ts";
+import { nodeKeyMap } from "./node-keys.ts";
 
 interface StatusMapState {
 	names: Record<string, string>;
@@ -116,9 +117,35 @@ export function safeParseMarkdown(content: string): { frontmatter: Record<string
 	}
 }
 
-export function rawField(rawFrontmatter: string, name: string): string {
+let cachedLegacyToCurrent: Record<string, string> | undefined;
+let cachedCurrentToLegacy: Record<string, string> | undefined;
+
+function keyAliases(): { legacyToCurrent: Record<string, string>; currentToLegacy: Record<string, string> } {
+	if (!cachedLegacyToCurrent) {
+		cachedLegacyToCurrent = nodeKeyMap();
+		cachedCurrentToLegacy = Object.fromEntries(
+			Object.entries(cachedLegacyToCurrent).map(([legacy, current]) => [current, legacy]),
+		);
+	}
+	return { legacyToCurrent: cachedLegacyToCurrent, currentToLegacy: cachedCurrentToLegacy ?? {} };
+}
+
+function readRawField(rawFrontmatter: string, name: string): string {
 	const match = new RegExp(`^${name}:[ \\t]*"?([^"\\n]*)"?[ \\t]*$`, "m").exec(rawFrontmatter);
 	return match ? (match[1] ?? "").trim() : "";
+}
+
+/**
+ * Lê `name` no frontmatter cru; sem `name`, tenta a outra forma da MESMA chave (legada↔atual, nó
+ * 1.44.6, mesmo mecanismo de `campo()` em node-edit.js) — nó só com a chave antiga, só com a nova, ou
+ * misturado leem igual, qualquer que seja o nome passado pelo chamador.
+ */
+export function rawField(rawFrontmatter: string, name: string): string {
+	const direct = readRawField(rawFrontmatter, name);
+	if (direct) return direct;
+	const { legacyToCurrent, currentToLegacy } = keyAliases();
+	const alias = legacyToCurrent[name] ?? currentToLegacy[name];
+	return alias ? readRawField(rawFrontmatter, alias) : "";
 }
 
 export function frontmatterText(content: string): string {
@@ -219,10 +246,12 @@ export function parseCanonNode(content: string, fileId?: string): Task {
 	const journal = bulletSection(rawContent, "Journal");
 
 	const statusCode = rawField(fm, "status");
-	const tipo = rawField(fm, "tipo") || undefined;
-	const desenho = rawField(fm, "desenho") || undefined;
+	// nó 1.44.6: chave atual (kind/design/created_date) — rawField já lê a legada (tipo/desenho/
+	// gerado_em) por baixo, num nó ainda não migrado por normalize-keys.
+	const tipo = rawField(fm, "kind") || undefined;
+	const desenho = rawField(fm, "design") || undefined;
 	const review = rawField(fm, "review") || undefined;
-	const geradoEm = rawField(fm, "gerado_em") || undefined;
+	const geradoEm = rawField(fm, "created_date") || undefined;
 
 	const references = [
 		...(desenho ? [desenho] : []),

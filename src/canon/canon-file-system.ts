@@ -181,7 +181,7 @@ export class CanonFileSystem extends FileSystem {
 				filePath,
 				content,
 				statusCode: rawField(fm, "status"),
-				tipo: rawField(fm, "tipo") || undefined,
+				tipo: rawField(fm, "kind") || undefined, // nó 1.44.6: rawField já lê "tipo" legado por baixo
 				parentId: rawField(fm, "parent") || undefined,
 				mtime: info.mtime,
 			});
@@ -628,10 +628,11 @@ export class CanonFileSystem extends FileSystem {
 		}
 
 		for (const node of raw) {
-			const design = rawField(frontmatterText(node.content), "desenho");
+			// nó 1.44.6: "design" é a chave atual — rawField já lê "desenho" legado por baixo.
+			const design = rawField(frontmatterText(node.content), "design");
 			if (!design) continue;
 			const who = raw
-				.filter((other) => rawField(frontmatterText(other.content), "desenho") === design)
+				.filter((other) => rawField(frontmatterText(other.content), "design") === design)
 				.map((other) => other.id);
 			await this.acceptDecisionFile(
 				decisions,
