@@ -9,6 +9,8 @@ import DraftsList from './components/DraftsList';
 import Settings from './components/Settings';
 // drummond-canon: página de Projetos do computador (nó 1.34.12).
 import ProjectsPage from '../canon/web/ProjectsPage';
+// drummond-canon: página de Notificações, todos os projetos (nó 1.34.13).
+import NotificationsPage from '../canon/web/NotificationsPage';
 import Statistics from './components/Statistics';
 import MilestonesPage from './components/MilestonesPage';
 import TaskDetailsModal from './components/TaskDetailsModal';
@@ -1052,6 +1054,8 @@ function AppContent() {
             <Route path="settings" element={<Settings />} />
             {/* drummond-canon: nó 1.34.12 */}
             <Route path="projects" element={<ProjectsPage />} />
+            {/* drummond-canon: nó 1.34.13 */}
+            <Route path="notifications" element={<NotificationsPage />} />
           </Route>
       </Routes>
 

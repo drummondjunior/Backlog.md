@@ -19,6 +19,8 @@ import { buildDocsTree, type DocsTreeNode } from '../lib/docs-tree';
 import ProjectsSection from '../../canon/web/ProjectsSection';
 import NodesTree from '../../canon/web/NodesTree';
 import CanonVersion from '../../canon/web/CanonVersion';
+// drummond-canon: item "Notifications (N)" no menu, todos os projetos (nó 1.34.13).
+import NotificationsNavLink from '../../canon/web/NotificationsNavLink';
 
 // Utility functions for ID transformations
 const stripIdPrefix = (id: string): string => {
@@ -688,6 +690,9 @@ const SideNavigation = memo(function SideNavigation({
 							<span className="ml-3 text-sm font-medium">Milestones</span>
 						</NavLink>
 
+						{/* drummond-canon: nó 1.34.13 */}
+						<NotificationsNavLink collapsed={false} />
+
 						{/* Drafts Navigation */}
 						<NavLink
 							to="/drafts"
@@ -927,6 +932,8 @@ const SideNavigation = memo(function SideNavigation({
 								<Icons.Milestone />
 							</div>
 						</NavLink>
+						{/* drummond-canon: nó 1.34.13 */}
+						<NotificationsNavLink collapsed />
 						{/* Statistics Navigation */}
 						<NavLink
 							to="/statistics"

@@ -33,6 +33,43 @@ export function fetchCanonVersion(): Promise<string> {
 	return getJson<{ version: string }>("/api/canon/version").then((d) => d.version);
 }
 
+// Notificações (drummond-canon, nó 1.34.13): hoje só o tipo "exceção de rótulo"
+// (scripts/canon-tools/label-exception.js do plugin), outros tipos entram depois sem mudar a forma.
+export interface CanonNotificationContext {
+	tool: string;
+	file: string;
+	excerpt: string;
+}
+
+export type CanonNotificationStatus = "pending" | "fixed" | "approved" | "rejected";
+
+export interface CanonNotification {
+	id: string;
+	createdAt: string;
+	repo: string;
+	project: string;
+	nodes: string[];
+	match: string;
+	reason: string;
+	context: CanonNotificationContext | null;
+	status: CanonNotificationStatus;
+	answer: string;
+	evidence?: string;
+}
+
+export function fetchCanonNotifications(): Promise<CanonNotification[]> {
+	return getJson("/api/canon/notifications");
+}
+
+export function answerCanonNotification(id: string, status: "approved" | "rejected"): Promise<void> {
+	return postJson("/api/canon/notifications/answer", { id, status });
+}
+
+/** Abre o nó no projeto certo — mesma navegação de servidor de `openCanonProject`. */
+export function canonNotificationNodeLink(project: string, nodeId: string): string {
+	return `/open?repo=${encodeURIComponent(project)}&to=${encodeURIComponent(`/tasks/${nodeId}`)}`;
+}
+
 async function postJson(url: string, body: unknown): Promise<void> {
 	const res = await fetch(url, {
 		method: "POST",
