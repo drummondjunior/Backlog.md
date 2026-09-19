@@ -333,7 +333,12 @@ export class CanonFileSystem extends FileSystem {
 		return prefixes.filter((prefix) => !prefixes.some((other) => other !== prefix && prefix.startsWith(`${other}/`)));
 	}
 
-	private async walkMarkdownFiles(absDir: string, out: string[] = []): Promise<string[]> {
+	/** Percorre `.md` sem entrar nas pastas que `skipDir` recusa (pasta dos nós, excluídas do mapa). */
+	private async walkMarkdownFiles(
+		absDir: string,
+		skipDir: (absDir: string) => boolean,
+		out: string[] = [],
+	): Promise<string[]> {
 		let entries: Dirent[];
 		try {
 			entries = await readdir(absDir, { withFileTypes: true });
@@ -343,8 +348,9 @@ export class CanonFileSystem extends FileSystem {
 		for (const entry of entries) {
 			if (entry.name.startsWith(".")) continue;
 			const abs = join(absDir, entry.name);
-			if (entry.isDirectory()) await this.walkMarkdownFiles(abs, out);
-			else if (entry.name.endsWith(".md")) out.push(abs);
+			if (entry.isDirectory()) {
+				if (!skipDir(abs)) await this.walkMarkdownFiles(abs, skipDir, out);
+			} else if (entry.name.endsWith(".md")) out.push(abs);
 		}
 		return out;
 	}
@@ -364,11 +370,17 @@ export class CanonFileSystem extends FileSystem {
 		const excludedGlobs = this.map.folders.excluded.map((pattern) => new Bun.Glob(pattern));
 		const dataDirRel = relative(this.project.repoRoot, this.project.dataDir);
 
+		// Poda na descida: a pasta dos nós (milhares de notas) e as excluídas nem são lidas.
+		const skipDir = (absDir: string): boolean => {
+			const rel = relative(this.project.repoRoot, absDir).split("\\").join("/");
+			return rel === dataDirRel || excludedGlobs.some((glob) => glob.match(`${rel}/x.md`));
+		};
+
 		const absFiles = new Set<string>();
 		for (const root of CanonFileSystem.scanRoots(this.map.folders.documents)) {
 			const absRoot = join(this.project.repoRoot, root);
 			if (!existsSync(absRoot)) continue;
-			for (const absPath of await this.walkMarkdownFiles(absRoot)) absFiles.add(absPath);
+			for (const absPath of await this.walkMarkdownFiles(absRoot, skipDir)) absFiles.add(absPath);
 		}
 
 		const candidates: DocumentCandidate[] = [];
