@@ -1,3 +1,4 @@
+import { isCanonNode, parseCanonNode } from "../canon/node-codec.ts"; // drummond-canon
 import type { AcceptanceCriterion, Decision, Document, Milestone, ParsedMarkdown, Task } from "../types/index.ts";
 import { normalizeDueDate } from "../utils/due-date.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
@@ -163,6 +164,7 @@ export function parseMarkdown(content: string): ParsedMarkdown {
 }
 
 export function parseTask(content: string): Task {
+	if (isCanonNode(content)) return parseCanonNode(content); // drummond-canon
 	const { frontmatter, content: rawContent } = parseMarkdown(content);
 
 	const priority = normalizePriorityValue(frontmatter.priority ? String(frontmatter.priority) : undefined);
