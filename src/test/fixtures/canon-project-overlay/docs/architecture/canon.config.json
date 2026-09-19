@@ -1,0 +1,11 @@
+{
+	"repoName": "proj-overlay",
+	"paths": {
+		"dataDir": "docs/architecture/proj-overlay-canon"
+	},
+	"backlog": {
+		"folders": {
+			"documents": ["docs/custom/**"]
+		}
+	}
+}

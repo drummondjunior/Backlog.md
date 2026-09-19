@@ -12,19 +12,21 @@ import { execFileSync } from "node:child_process";
 import type { Dirent } from "node:fs";
 import { existsSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { basename, join, relative, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
+import type { BacklogMap } from "./backlog-map.ts";
+import { loadBacklogMap } from "./backlog-map.ts";
 import { compareCanonIds } from "./identity.ts";
 import {
 	bulletSection,
-	COLUMNS,
 	formatCanonDate,
 	frontmatterText,
-	INVALID_STATUS,
+	getColumns,
+	getInvalidStatus,
+	getStatusNames,
 	parseCanonNode,
 	rawField,
-	STATUS_NAMES,
 	safeParseMarkdown,
 } from "./node-codec.ts";
 import type { CanonProject } from "./project.ts";
@@ -36,16 +38,13 @@ export class CanonReadOnlyError extends Error {
 	}
 }
 
-// Ancestral materializado pelo conversor (backlog-adapter.js:115-117, `ehTrabalho`): não tem texto
-// nem trabalho, existe só para a árvore ligar — nunca vira Task.
-const STRUCTURAL_STATUS = "estrutural";
-// Arquivamento (spec §4.1): DONE vira concluído, REJECTED/SUPERSEDED viram arquivado. DEFERRED
-// continua no quadro normal.
-const DONE_STATUS = "DONE";
-const ARCHIVED_STATUSES = new Set(["REJECTED", "SUPERSEDED"]);
-const DRAFT_STATUS = "CAPTURED";
-// Decisão formal no nome do arquivo (backlog-adapter.js:240): ADR-NNN, ASR-NNNN, "…decisão…".
-const IS_DECISION_FILE = /^(ADR|ASR)-\d+|decis/i;
+/** Um candidato a documento: caminho absoluto, o caminho usado para id/nome/path (§ regra abaixo) e o
+ * caminho sempre relativo à raiz do repo, usado só em mensagem/contexto. */
+interface DocumentCandidate {
+	absPath: string;
+	idPath: string;
+	repoRelPath: string;
+}
 
 interface RawNode {
 	id: string;
@@ -97,9 +96,40 @@ function creationDatesByFile(dataDir: string): Record<string, string> {
 export class CanonFileSystem extends FileSystem {
 	private readonly project: CanonProject;
 
+	// Mapa central com a sobreposição do repo já aplicada (§4.3) — lido uma vez por instância.
+	private readonly map: BacklogMap;
+	// Ancestral materializado pelo conversor (backlog-adapter.js:115-117, `ehTrabalho`): não tem texto
+	// nem trabalho, existe só para a árvore ligar — nunca vira Task. Grupo "structural" no mapa.
+	private readonly structuralStatus: string;
+	// Arquivamento (spec §4.1): grupo "completed" vira concluído, "archived" vira arquivado. "board"
+	// (inclusive DEFERRED) continua no quadro normal.
+	private readonly doneStatus: string;
+	private readonly archivedStatuses: Set<string>;
+	private readonly draftStatus?: string;
+	// Decisão formal no nome do arquivo (backlog-adapter.js:240): ADR-NNN, ASR-NNNN, "…decisão…" — do mapa.
+	private readonly isDecisionFile: RegExp;
+
 	constructor(projectRoot: string, project: CanonProject) {
 		super(projectRoot);
 		this.project = project;
+		this.map = loadBacklogMap(project.repoRoot);
+
+		let structuralStatus = "estrutural";
+		let doneStatus = "DONE";
+		let draftStatus: string | undefined;
+		const archivedStatuses = new Set<string>();
+		for (const [code, info] of Object.entries(this.map.statuses)) {
+			if (code === "_invalid") continue;
+			if (info.group === "structural") structuralStatus = code;
+			else if (info.group === "completed") doneStatus = code;
+			else if (info.group === "archived") archivedStatuses.add(code);
+			if (info.draft) draftStatus = code;
+		}
+		this.structuralStatus = structuralStatus;
+		this.doneStatus = doneStatus;
+		this.archivedStatuses = archivedStatuses;
+		this.draftStatus = draftStatus;
+		this.isDecisionFile = new RegExp((this.map.folders.decisionFileNames ?? []).join("|") || "(?!)", "i");
 	}
 
 	// Pastas observadas pelo tempo real são as do canon (despacho 1.34.10.4).
@@ -220,9 +250,9 @@ export class CanonFileSystem extends FileSystem {
 			raw,
 			tasks,
 			(node) =>
-				node.statusCode !== STRUCTURAL_STATUS &&
-				node.statusCode !== DONE_STATUS &&
-				!ARCHIVED_STATUSES.has(node.statusCode),
+				node.statusCode !== this.structuralStatus &&
+				node.statusCode !== this.doneStatus &&
+				!this.archivedStatuses.has(node.statusCode),
 		);
 		return this.applyTaskFilter(list, filter).sort((a, b) => compareCanonIds(a.id, b.id));
 	}
@@ -235,19 +265,19 @@ export class CanonFileSystem extends FileSystem {
 
 	override async listDrafts(): Promise<Task[]> {
 		const raw = await this.readRawNodes();
-		return this.tasksWhere(raw, this.buildTasks(raw), (node) => node.statusCode === DRAFT_STATUS);
+		return this.tasksWhere(raw, this.buildTasks(raw), (node) => node.statusCode === this.draftStatus);
 	}
 
-	/** Concluído (spec §4.1): DONE. Nada muda de pasta — responde pelo estado. */
+	/** Concluído (spec §4.1): grupo "completed" (DONE). Nada muda de pasta — responde pelo estado. */
 	override async listCompletedTasks(): Promise<Task[]> {
 		const raw = await this.readRawNodes();
-		return this.tasksWhere(raw, this.buildTasks(raw), (node) => node.statusCode === DONE_STATUS);
+		return this.tasksWhere(raw, this.buildTasks(raw), (node) => node.statusCode === this.doneStatus);
 	}
 
-	/** Arquivado (spec §4.1): REJECTED e SUPERSEDED. */
+	/** Arquivado (spec §4.1): grupo "archived" (REJECTED, SUPERSEDED). */
 	override async listArchivedTasks(): Promise<Task[]> {
 		const raw = await this.readRawNodes();
-		return this.tasksWhere(raw, this.buildTasks(raw), (node) => ARCHIVED_STATUSES.has(node.statusCode));
+		return this.tasksWhere(raw, this.buildTasks(raw), (node) => this.archivedStatuses.has(node.statusCode));
 	}
 
 	override async listMilestones(): Promise<Milestone[]> {
@@ -259,11 +289,11 @@ export class CanonFileSystem extends FileSystem {
 	override async loadConfig(): Promise<BacklogConfig | null> {
 		const raw = await this.readRawNodes();
 		const hasInvalidStatus = raw.some(
-			(node) => node.statusCode !== STRUCTURAL_STATUS && !(node.statusCode in STATUS_NAMES),
+			(node) => node.statusCode !== this.structuralStatus && !(node.statusCode in getStatusNames()),
 		);
 		return {
 			projectName: this.project.repoName,
-			statuses: hasInvalidStatus ? [...COLUMNS, INVALID_STATUS] : COLUMNS,
+			statuses: hasInvalidStatus ? [...getColumns(), getInvalidStatus()] : getColumns(),
 			labels: [],
 			definitionOfDone: [],
 			defaultStatus: "A fazer",
@@ -284,32 +314,75 @@ export class CanonFileSystem extends FileSystem {
 
 	// --- documentos ------------------------------------------------------------------------------
 
-	/** Pastas da arquitetura que NÃO são documento: os próprios nós, backup do monolito, backlog pré-canon (backlog-adapter.js:196-199). */
-	private isOutsideDocsScope(relativePath: string): boolean {
-		const nodesRelative = relative(this.project.archDir, this.project.dataDir);
-		if (relativePath === nodesRelative || relativePath.startsWith(`${nodesRelative}/`)) return true;
-		return relativePath.split("/").some((segment) => segment === "_backup" || segment.endsWith("-backlog"));
+	/**
+	 * O prefixo literal (sem `*`/`?`) de um padrão do mapa, para achar a pasta real a percorrer — de
+	 * `"docs/superpowers/specs/**"` sai `"docs/superpowers/specs"`.
+	 */
+	private static literalPrefix(pattern: string): string {
+		const literal: string[] = [];
+		for (const segment of pattern.split("/")) {
+			if (segment.includes("*") || segment.includes("?")) break;
+			literal.push(segment);
+		}
+		return literal.join("/");
 	}
 
-	private async listMarkdownFiles(relativeDir = ""): Promise<string[]> {
+	/** Raízes únicas a percorrer (relativas à raiz do repo), sem uma pasta dentro da outra. */
+	private static scanRoots(patterns: string[]): string[] {
+		const prefixes = [...new Set(patterns.map(CanonFileSystem.literalPrefix).filter(Boolean))];
+		return prefixes.filter((prefix) => !prefixes.some((other) => other !== prefix && prefix.startsWith(`${other}/`)));
+	}
+
+	private async walkMarkdownFiles(absDir: string, out: string[] = []): Promise<string[]> {
 		let entries: Dirent[];
 		try {
-			entries = await readdir(join(this.project.archDir, relativeDir), { withFileTypes: true });
+			entries = await readdir(absDir, { withFileTypes: true });
 		} catch {
-			return [];
+			return out;
 		}
-		const files: string[] = [];
 		for (const entry of entries) {
-			const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
-			if (entry.isDirectory()) {
-				if (!entry.name.startsWith(".") && !this.isOutsideDocsScope(relativePath)) {
-					files.push(...(await this.listMarkdownFiles(relativePath)));
-				}
-			} else if (entry.name.endsWith(".md")) {
-				files.push(relativePath);
-			}
+			if (entry.name.startsWith(".")) continue;
+			const abs = join(absDir, entry.name);
+			if (entry.isDirectory()) await this.walkMarkdownFiles(abs, out);
+			else if (entry.name.endsWith(".md")) out.push(abs);
 		}
-		return files;
+		return out;
+	}
+
+	/**
+	 * Documento = todo `.md` dentro das pastas do mapa central (`folders.documents`, §4.3: hoje
+	 * `docs/architecture/**`, `docs/superpowers/specs/**`, `docs/superpowers/plans/**`,
+	 * `docs/plans/**`), fora do que o mapa exclui (`folders.excluded`) e sempre fora do `dataDir` dos
+	 * nós (excluído mesmo que a sobreposição do repo troque `folders.excluded` inteiro).
+	 *
+	 * Regra do id/path (§ relatório 1.34.10.7): arquivo dentro de `docs/architecture` mantém o formato
+	 * de hoje — relativo a `docs/architecture`, `/` vira `--` no id (`doc-06-comercial`). Arquivo fora
+	 * de `docs/architecture` (as pastas novas) usa o caminho relativo à RAIZ DO REPO (`doc-docs--plans--x`).
+	 */
+	private async documentCandidates(): Promise<DocumentCandidate[]> {
+		const documentGlobs = this.map.folders.documents.map((pattern) => new Bun.Glob(pattern));
+		const excludedGlobs = this.map.folders.excluded.map((pattern) => new Bun.Glob(pattern));
+		const dataDirRel = relative(this.project.repoRoot, this.project.dataDir);
+
+		const absFiles = new Set<string>();
+		for (const root of CanonFileSystem.scanRoots(this.map.folders.documents)) {
+			const absRoot = join(this.project.repoRoot, root);
+			if (!existsSync(absRoot)) continue;
+			for (const absPath of await this.walkMarkdownFiles(absRoot)) absFiles.add(absPath);
+		}
+
+		const candidates: DocumentCandidate[] = [];
+		for (const absPath of absFiles) {
+			const repoRelPath = relative(this.project.repoRoot, absPath).split("\\").join("/");
+			if (repoRelPath === dataDirRel || repoRelPath.startsWith(`${dataDirRel}/`)) continue;
+			if (!documentGlobs.some((glob) => glob.match(repoRelPath))) continue;
+			if (excludedGlobs.some((glob) => glob.match(repoRelPath))) continue;
+
+			const archRelPath = relative(this.project.archDir, absPath).split("\\").join("/");
+			const isUnderArch = !archRelPath.startsWith("..") && !isAbsolute(archRelPath);
+			candidates.push({ absPath, idPath: isUnderArch ? archRelPath : repoRelPath, repoRelPath });
+		}
+		return candidates.sort((a, b) => (a.idPath < b.idPath ? -1 : a.idPath > b.idPath ? 1 : 0));
 	}
 
 	private toDocument(relativePath: string, content: string, modified: string): Document {
@@ -328,20 +401,19 @@ export class CanonFileSystem extends FileSystem {
 		};
 	}
 
-	/** Documento = todo .md da arquitetura, inclusive em subpasta (backlog-adapter.js:218-228, `docs`). */
+	/** Documento = todo `.md` no escopo do mapa central, arquitetura inclusive (backlog-adapter.js:218-228, `docs`). */
 	override async listDocuments(): Promise<Document[]> {
-		const relativePaths = (await this.listMarkdownFiles()).sort();
+		const candidates = await this.documentCandidates();
 		const docs: Document[] = [];
-		for (const relativePath of relativePaths) {
-			const filePath = join(this.project.archDir, relativePath);
+		for (const { absPath, idPath } of candidates) {
 			let content: string;
 			try {
-				content = await readFile(filePath, "utf8");
+				content = await readFile(absPath, "utf8");
 			} catch {
 				continue;
 			}
-			const info = await stat(filePath);
-			docs.push(this.toDocument(relativePath, content, formatCanonDate(info.mtime)));
+			const info = await stat(absPath);
+			docs.push(this.toDocument(idPath, content, formatCanonDate(info.mtime)));
 		}
 		return docs;
 	}
@@ -412,16 +484,16 @@ export class CanonFileSystem extends FileSystem {
 		}
 
 		const seen = new Set<string>();
-		const decisionFiles = (await this.listMarkdownFiles()).filter((relativePath) =>
-			IS_DECISION_FILE.test(basename(relativePath)),
+		const decisionFiles = (await this.documentCandidates()).filter((candidate) =>
+			this.isDecisionFile.test(basename(candidate.idPath)),
 		);
-		for (const relativePath of decisionFiles) {
+		for (const { absPath, idPath, repoRelPath } of decisionFiles) {
 			await this.acceptDecisionFile(
 				decisions,
 				seen,
-				join(this.project.archDir, relativePath),
-				relativePath.replace(/\.md$/, ""),
-				`Decisão formal: docs/architecture/${relativePath}`,
+				absPath,
+				idPath.replace(/\.md$/, ""),
+				`Decisão formal: ${repoRelPath}`,
 			);
 		}
 

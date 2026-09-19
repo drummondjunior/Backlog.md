@@ -1,0 +1,72 @@
+{
+	"_doc": "Mapa central canon ↔ Backlog.md (nó 1.34.10.7). Fonte única: o conector (fork backlog-md-canon) e o node-edit leem daqui; nenhum dos dois guarda lista própria. Por repo, só o que muda, na chave 'backlog' do canon.config.json. Campo com 'canon': 'missing' é o que o canon ainda não tem — e tem de citar o nó que o desenvolve.",
+	"folders": {
+		"_doc": "Padrões relativos à raiz do repo. '**' = qualquer subpasta. 'nodes' é o dataDir do canon.config.json.",
+		"documents": ["docs/architecture/**", "docs/superpowers/specs/**", "docs/superpowers/plans/**", "docs/plans/**"],
+		"excluded": ["**/_backup/**", "**/*-backlog/**", "**/*-canon/**"],
+		"decisionFileNames": ["^ADR-\\d+", "^ASR-\\d+", "decis"]
+	},
+	"statuses": {
+		"_doc": "Estado do canon → coluna do Backlog.md (nome exibido) e grupo: board (quadro), completed (concluído), archived (arquivado), structural (não é tarefa). Estado fora da lista aparece como 'Estado inválido', nunca escondido.",
+		"CAPTURED": { "column": "Capturado", "group": "board", "draft": true },
+		"TODO": { "column": "A fazer", "group": "board" },
+		"DOING": { "column": "Em curso", "group": "board" },
+		"BLOCKED": { "column": "Travado", "group": "board" },
+		"VERIFY": { "column": "A verificar", "group": "board" },
+		"ACTIVE": { "column": "Ativo", "group": "board" },
+		"DEFERRED": { "column": "Adiado", "group": "board" },
+		"DONE": { "column": "Entregue", "group": "completed" },
+		"REJECTED": { "column": "Recusado", "group": "archived" },
+		"SUPERSEDED": { "column": "Substituído", "group": "archived" },
+		"estrutural": { "column": null, "group": "structural" },
+		"_invalid": { "column": "Estado inválido", "group": "board" }
+	},
+	"fields": {
+		"_doc": "Campo do Backlog.md (nome no arquivo) → onde está no canon. 'canon': nome da chave existente no nó; 'same': grava com o mesmo nome (node-edit); 'derived': vem da árvore ou do git; 'missing': o canon ainda não tem → 'node' que desenvolve.",
+		"id": { "canon": "id" },
+		"title": { "canon": "derived", "from": "1ª frase do bloco ```canon" },
+		"status": { "canon": "status", "via": "statuses" },
+		"parent_task_id": { "canon": "parent" },
+		"subtasks": { "canon": "derived", "from": "filhos na árvore" },
+		"ordinal": { "canon": "derived", "from": "ordem Dewey" },
+		"labels": { "canon": "tipo", "plus": "labels" },
+		"created_date": { "canon": "same", "fallback": "gerado_em, depois 1º commit" },
+		"updated_date": { "canon": "same" },
+		"completed_date": { "canon": "same", "note": "o Backlog.md não tem; campo nosso, gravado no done" },
+		"due_date": { "canon": "same" },
+		"assignee": { "canon": "same" },
+		"reporter": { "canon": "same" },
+		"priority": { "canon": "same" },
+		"type": { "canon": "same" },
+		"project": { "canon": "same" },
+		"milestone": { "canon": "same" },
+		"dependencies": { "canon": "same", "plus": "aresta blocks" },
+		"references": { "canon": "same", "plus": "desenho, review" },
+		"documentation": { "canon": "same" },
+		"modified_files": { "canon": "same" },
+		"onStatusChange": { "canon": "same" },
+		"branch": { "canon": "derived", "from": "git (o carregador deles lê)" },
+		"description": {
+			"canon": "same",
+			"section": "## Description",
+			"fallback": "resto do bloco ```canon depois do título"
+		},
+		"acceptance_criteria": { "canon": "same", "section": "## Acceptance Criteria" },
+		"definition_of_done": { "canon": "same", "section": "## Definition of Done" },
+		"implementation_plan": { "canon": "same", "section": "## Implementation Plan" },
+		"implementation_notes": { "canon": "## Journal" },
+		"final_summary": { "canon": "same", "section": "## Final Summary" },
+		"comments": { "canon": "same", "section": "## Comments" },
+		"milestone_as_node": {
+			"canon": "missing",
+			"node": "1.43",
+			"note": "marco do Backlog.md ↔ nó de nível alto do canon: a avaliar"
+		}
+	},
+	"values": {
+		"type": ["bug", "feature", "enhancement", "task", "chore", "docs", "spike"],
+		"priority": ["high", "medium", "low"],
+		"nodeTypes": ["trabalho", "estrutural", "correção", "investigação", "documentação", "followup"],
+		"nodeTypeLegacy": { "correcao": "correção", "investigacao": "investigação", "documentacao": "documentação" }
+	}
+}

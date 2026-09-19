@@ -1,37 +1,80 @@
-// Codec do nó do canon (drummond-canon, nó 1.34.10.3). Portado de
-// scripts/canon-tools/backlog-adapter.js do drummond-canon: NOMES (linhas 19-22), limparTexto
-// (linhas 57-67), titulo (linhas 124-128) e paraTask (linhas 130-161). O código do status
-// continua sendo a verdade no arquivo; o nome aqui é só o que a tela do Backlog.md exibe.
+// Codec do nó do canon (drummond-canon, nó 1.34.10.3; nós, campos e mapa central em 1.34.10.7/1.43).
+// Portado de scripts/canon-tools/backlog-adapter.js do drummond-canon: NOMES (linhas 19-22),
+// limparTexto (linhas 57-67), titulo (linhas 124-128) e paraTask (linhas 130-161). O código do
+// status continua sendo a verdade no arquivo; o nome aqui é só o que a tela do Backlog.md exibe.
+// Nomes de estado, colunas e "Estado inválido" vêm do mapa central (backlog-map.ts) — nenhuma lista
+// própria aqui. Sem contexto de projeto (parser.ts chama sem repoRoot), usa só o mapa base, sem
+// sobreposição de repo.
 import { parseMarkdown } from "../markdown/parser.ts";
+import {
+	AcceptanceCriteriaManager,
+	CommentsManager,
+	DefinitionOfDoneManager,
+	extractStructuredSection,
+	STRUCTURED_SECTION_KEYS,
+} from "../markdown/structured-sections.ts";
 import type { Task } from "../types/index.ts";
 import { normalizeDueDate } from "../utils/due-date.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
+import { loadBacklogMap } from "./backlog-map.ts";
 import { isCanonId } from "./identity.ts";
 
-/** backlog-adapter.js:19-22 (NOMES). */
-export const STATUS_NAMES: Record<string, string> = {
-	CAPTURED: "Capturado",
-	TODO: "A fazer",
-	DOING: "Em curso",
-	BLOCKED: "Travado",
-	VERIFY: "A verificar",
-	ACTIVE: "Ativo",
-	DEFERRED: "Adiado",
-	DONE: "Entregue",
-	REJECTED: "Recusado",
-	SUPERSEDED: "Substituído",
-};
+interface StatusMapState {
+	names: Record<string, string>;
+	invalid: string;
+	columns: string[];
+	words: string[];
+	bracketedOldStatus: RegExp;
+	looseOldStatus: RegExp;
+}
+
+let cachedStatusState: StatusMapState | undefined;
+
+/** Lê o mapa central uma vez e monta o estado derivado (nomes, colunas, regex de estado antigo). */
+function statusState(): StatusMapState {
+	if (cachedStatusState) return cachedStatusState;
+	const map = loadBacklogMap();
+	const names: Record<string, string> = {};
+	const columns: string[] = [];
+	let invalid = "Estado inválido";
+	for (const [code, info] of Object.entries(map.statuses)) {
+		if (code === "_invalid") {
+			invalid = info.column ?? invalid;
+			continue;
+		}
+		if (info.group === "structural" || !info.column) continue;
+		names[code] = info.column;
+		if (info.group !== "archived") columns.push(info.column);
+	}
+	const words = Object.keys(names);
+	cachedStatusState = {
+		names,
+		invalid,
+		columns,
+		words,
+		bracketedOldStatus: new RegExp(`\\s*\\[(?:${words.join("|")})\\b[^\\]]*\\]`, "g"),
+		looseOldStatus: new RegExp(`\\s+(?:${words.join("|")})\\b`, "g"),
+	};
+	return cachedStatusState;
+}
+
+/** Nome exibido de cada estado (backlog-adapter.js:19-22, `NOMES`) — do mapa central. */
+export function getStatusNames(): Record<string, string> {
+	return statusState().names;
+}
 
 /** Estado fora do canon: aparece, nunca some (backlog-adapter.js:24-26). */
-export const INVALID_STATUS = "Estado inválido";
+export function getInvalidStatus(): string {
+	return statusState().invalid;
+}
 
 /**
  * Colunas do quadro, na ordem em que o trabalho anda (backlog-adapter.js:23, `COLUNAS`). Recusado e
  * Substituído não têm coluna — são arquivamento (nó 1.34.10.4, spec §4.1), não board.
  */
-export const COLUMNS = Object.entries(STATUS_NAMES)
-	.filter(([code]) => code !== "REJECTED" && code !== "SUPERSEDED")
-	.map(([, label]) => label);
+export function getColumns(): string[] {
+	return statusState().columns;
+}
 
 const CANON_BLOCK = /```canon\n([\s\S]*?)```/;
 const FRONTMATTER_BLOCK = /^---\r?\n([\s\S]*?)\r?\n---/;
@@ -72,34 +115,39 @@ export function isCanonNode(content: string): boolean {
 	return isCanonId(rawField(frontmatterText(content), "id"));
 }
 
-const STATUS_WORDS = Object.keys(STATUS_NAMES);
-// Estado antigo escrito DENTRO do texto (monolito, antes de o estado ir para o cabeçalho): sai do
-// título. backlog-adapter.js:50-51 (ESTADO_ENTRE_COLCHETES, ESTADO_SOLTO).
-const BRACKETED_OLD_STATUS = new RegExp(`\\s*\\[(?:${STATUS_WORDS.join("|")})\\b[^\\]]*\\]`, "g");
-const LOOSE_OLD_STATUS = new RegExp(`\\s+(?:${STATUS_WORDS.join("|")})\\b`, "g");
-
 /**
  * Texto do nó pronto para a tela: tira a referência de linha ("# L647"), o desenho de árvore
  * ("|| └──"), o próprio id repetido no começo e o estado antigo solto. backlog-adapter.js:57-67.
  */
 export function cleanNodeText(raw: string, id: string): string {
+	const { bracketedOldStatus, looseOldStatus } = statusState();
 	let text = String(raw).replace(/\s+/g, " ").trim();
 	text = text.replace(/^#\s*L\d+\s*\|?\s*/, "").replace(/^L\d+\s*\|\s*/, "");
 	text = text.replace(/^[\s│├└─|]+/, "");
 	if (id && (text === id || text.startsWith(`${id} `))) text = text.slice(id.length);
 	return text
-		.replace(BRACKETED_OLD_STATUS, "")
+		.replace(bracketedOldStatus, "")
 		.replace(/\s*[│├└]+\s*/g, " ")
-		.replace(LOOSE_OLD_STATUS, "")
+		.replace(looseOldStatus, "")
 		.replace(/\s+/g, " ")
 		.trim();
 }
 
 /** 1ª frase = título (backlog-adapter.js:119-128). Corta só em fim de frase de verdade (. ! ?). */
 function nodeTitle(body: string): string {
+	return splitTitleAndRest(body).title;
+}
+
+/**
+ * Título (1ª frase) e o resto do bloco `canon` depois dele — usado para a descrição nunca repetir o
+ * título (Drummond viu a descrição repetir o título nos nós 3.6.b.4, 3.6.b.5, 3.7).
+ */
+function splitTitleAndRest(body: string): { title: string; rest: string } {
 	const match = /^(.{12,}?[.!?])(\s|$)/.exec(body);
-	const title = match?.[1] ?? body;
-	return title.length > 140 ? `${title.slice(0, 139).trimEnd()}…` : title;
+	const rawTitle = match?.[1] ?? body;
+	const rest = match ? body.slice(match[0].length).trim() : "";
+	const title = rawTitle.length > 140 ? `${rawTitle.slice(0, 139).trimEnd()}…` : rawTitle;
+	return { title, rest };
 }
 
 /**
@@ -131,9 +179,18 @@ function stringArray(value: unknown): string[] {
 	return Array.isArray(value) ? value.map(String) : [];
 }
 
+/** `tipo` do canon → label (normaliza a forma legada — `correcao` → `correção` — via mapa central). */
+function normalizedTipoLabel(tipo: string | undefined): string | undefined {
+	if (!tipo) return undefined;
+	const legacy = loadBacklogMap().values?.nodeTypeLegacy ?? {};
+	return legacy[tipo] ?? tipo;
+}
+
 /**
  * Nó do canon → Task deles. Chaves existentes mapeadas (backlog-adapter.js:paraTask); campos novos
- * lidos com o nome que o Backlog.md grava no arquivo, com os mesmos normalizadores do `parseTask`.
+ * lidos com o nome que o Backlog.md grava no arquivo, com os mesmos normalizadores do `parseTask`,
+ * inclusive as seções estruturadas do corpo (critérios de aceite, definição de pronto, plano, resumo
+ * final, comentários) lidas pelo próprio parser deles — nó 1.43, spec §4.2.
  */
 export function parseCanonNode(content: string, fileId?: string): Task {
 	const { frontmatter, content: rawContent } = safeParseMarkdown(content);
@@ -142,6 +199,7 @@ export function parseCanonNode(content: string, fileId?: string): Task {
 
 	const block = CANON_BLOCK.exec(rawContent);
 	const body = cleanNodeText(block?.[1] ?? "", id);
+	const { title: bodyTitle, rest: bodyRest } = body ? splitTitleAndRest(body) : { title: "", rest: "" };
 	const journal = bulletSection(rawContent, "Journal");
 
 	const statusCode = rawField(fm, "status");
@@ -156,34 +214,50 @@ export function parseCanonNode(content: string, fileId?: string): Task {
 		...stringArray(frontmatter.references),
 	];
 
+	// labels = tipo (normalizado) + frontmatter.labels, sem repetir (spec §4.2).
+	const tipoLabel = normalizedTipoLabel(tipo);
+	const labels = [...new Set([...(tipoLabel ? [tipoLabel] : []), ...stringArray(frontmatter.labels)])];
+
+	// description: "## Description" se existir; senão o resto do bloco canon depois do título; senão
+	// nenhuma — nunca uma cópia do título (visto repetindo nos nós 3.6.b.4, 3.6.b.5, 3.7).
+	const descriptionSection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.description);
+	const description = descriptionSection || bodyRest || undefined;
+
 	return {
 		id,
 		title: body
-			? nodeTitle(body)
+			? bodyTitle
 			: journal.length
 				? nodeTitle(journal[0]?.replace(/^-\s*(\[[^\]]*\]\s*)?/, "") ?? "")
 				: "(nó sem texto)",
-		status: STATUS_NAMES[statusCode] ?? INVALID_STATUS,
+		status: getStatusNames()[statusCode] ?? getInvalidStatus(),
 		assignee: Array.isArray(frontmatter.assignee)
 			? frontmatter.assignee.map(String)
 			: frontmatter.assignee
 				? [String(frontmatter.assignee)]
 				: [],
 		reporter: stringOrUndefined(frontmatter.reporter),
-		createdDate: formatCanonDate(geradoEm),
+		createdDate: frontmatter.created_date ? formatCanonDate(frontmatter.created_date) : formatCanonDate(geradoEm),
 		updatedDate: frontmatter.updated_date ? formatCanonDate(frontmatter.updated_date) : undefined,
 		dueDate: normalizeDueDate(frontmatter.due_date, "due_date"),
-		labels: tipo ? [tipo] : [],
+		labels,
 		milestone: stringOrUndefined(frontmatter.milestone),
 		dependencies: stringArray(frontmatter.dependencies),
 		references,
 		documentation: stringArray(frontmatter.documentation),
 		modifiedFiles: stringArray(frontmatter.modified_files),
 		rawContent,
-		description: body,
+		description,
+		acceptanceCriteriaItems: AcceptanceCriteriaManager.parseAllCriteria(rawContent),
+		definitionOfDoneItems: DefinitionOfDoneManager.parseAllCriteria(rawContent),
+		implementationPlan: extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.implementationPlan),
+		finalSummary: extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.finalSummary),
+		comments: CommentsManager.parseAllComments(rawContent),
 		implementationNotes: journal.length ? journal.map((line) => line.replace(/^-\s*/, "")).join("\n\n") : undefined,
 		parentTaskId: rawField(fm, "parent") || undefined,
 		priority: normalizePriorityValue(frontmatter.priority ? String(frontmatter.priority) : undefined),
 		type: stringOrUndefined(frontmatter.type),
+		project: stringOrUndefined(frontmatter.project),
+		onStatusChange: stringOrUndefined(frontmatter.onStatusChange),
 	};
 }
