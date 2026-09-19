@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { $ } from "bun";
+import { readCanonProject } from "../canon/project.ts"; // drummond-canon
 import { resolveBacklogDirectory } from "./backlog-directory.ts";
 
 /**
@@ -35,6 +36,7 @@ export async function findBacklogRoot(startDir: string): Promise<string | null> 
 		if (backlogResolution.configPath) {
 			return current;
 		}
+		if (readCanonProject(current)) return current; // drummond-canon: projeto do canon
 
 		// Check for backlog.json file
 		const backlogJson = join(current, "backlog.json");
