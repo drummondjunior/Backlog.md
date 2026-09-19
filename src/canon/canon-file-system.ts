@@ -1,7 +1,9 @@
 // Onde e como o Backlog.md lê um projeto do canon (drummond-canon, nó 1.34.10.4). Substitui a
 // camada de persistência inteira: os nós moram em `docs/architecture/<repo>-canon/*.md`, os
-// documentos em `docs/architecture/**` e as decisões nas quatro fontes da spec §5. Escrita é o nó
-// 1.34.7 — aqui todo método que grava recusa.
+// documentos em `docs/architecture/**` e as decisões nas quatro fontes da spec §5. Escrita de NÓ é o
+// nó 1.34.7 — todo método que grava nó/documento/decisão recusa. Exceção: `saveConfig` (nó 1.34.12) —
+// não é arquivo de nó, é config geral do computador (`canon-settings.ts`), sem concorrência com a
+// sessão do Claude Code.
 //
 // Transpilado de scripts/canon-tools/backlog-adapter.js do drummond-canon: `lerNos`/`datasDeCriacao`
 // (linhas 69-113, listagem + data de criação pelo git), `ehTrabalho`/`ehPastaDeFora` (linhas 117,
@@ -17,6 +19,7 @@ import { FileSystem } from "../file-system/operations.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import type { BacklogMap } from "./backlog-map.ts";
 import { loadBacklogMap } from "./backlog-map.ts";
+import { readCanonSettings, writeCanonSettings } from "./canon-settings.ts";
 import { compareCanonIds } from "./identity.ts";
 import {
 	bulletSection,
@@ -51,6 +54,7 @@ interface RawNode {
 	filePath: string;
 	content: string;
 	statusCode: string;
+	tipo?: string;
 	parentId?: string;
 	mtime: Date;
 }
@@ -177,6 +181,7 @@ export class CanonFileSystem extends FileSystem {
 				filePath,
 				content,
 				statusCode: rawField(fm, "status"),
+				tipo: rawField(fm, "tipo") || undefined,
 				parentId: rawField(fm, "parent") || undefined,
 				mtime: info.mtime,
 			});
@@ -235,6 +240,15 @@ export class CanonFileSystem extends FileSystem {
 		return list;
 	}
 
+	/**
+	 * Nó estrutural (nó `1.34.10.5.3`): por `status: estrutural` (já existia) OU `tipo: estrutural`
+	 * — o mesmo literal do mapa central, nos dois campos. Sai do quadro e da lista; continua na
+	 * árvore de Nós como pai que agrupa (o codec não filtra `readRawNodes`/`buildTasks`).
+	 */
+	private isStructural(node: RawNode): boolean {
+		return node.statusCode === this.structuralStatus || node.tipo === this.structuralStatus;
+	}
+
 	private tasksWhere(raw: RawNode[], tasks: Map<string, Task>, keep: (node: RawNode) => boolean): Task[] {
 		return raw
 			.filter(keep)
@@ -250,9 +264,7 @@ export class CanonFileSystem extends FileSystem {
 			raw,
 			tasks,
 			(node) =>
-				node.statusCode !== this.structuralStatus &&
-				node.statusCode !== this.doneStatus &&
-				!this.archivedStatuses.has(node.statusCode),
+				!this.isStructural(node) && node.statusCode !== this.doneStatus && !this.archivedStatuses.has(node.statusCode),
 		);
 		return this.applyTaskFilter(list, filter).sort((a, b) => compareCanonIds(a.id, b.id));
 	}
@@ -293,7 +305,7 @@ export class CanonFileSystem extends FileSystem {
 		const archivedIds = new Set(raw.filter((n) => this.archivedStatuses.has(n.statusCode)).map((n) => n.id));
 		const ids = new Set<string>();
 		for (const node of raw) {
-			if (node.statusCode === this.structuralStatus) continue;
+			if (this.isStructural(node)) continue;
 			const milestoneId = tasks.get(node.id)?.milestone;
 			if (milestoneId && !archivedIds.has(milestoneId)) ids.add(milestoneId);
 		}
@@ -330,6 +342,8 @@ export class CanonFileSystem extends FileSystem {
 		const hasInvalidStatus = raw.some(
 			(node) => node.statusCode !== this.structuralStatus && !(node.statusCode in getStatusNames()),
 		);
+		// Geral do computador (nó 1.34.12, spec §2): os campos que a tela Settings deixa editar vêm de
+		// `~/.claude/canon-settings.json`, por cima do que é sempre derivado do projeto (nome, colunas).
 		return {
 			projectName: this.project.repoName,
 			statuses: hasInvalidStatus ? [...getColumns(), getInvalidStatus()] : getColumns(),
@@ -348,7 +362,17 @@ export class CanonFileSystem extends FileSystem {
 			checkActiveBranches: false,
 			activeBranchDays: 0,
 			prefixes: { task: "" },
+			...readCanonSettings(),
 		};
+	}
+
+	/**
+	 * Geral do computador (nó 1.34.12): grava só os campos que `writeCanonSettings` reconhece —
+	 * `projectName`/`prefixes` continuam computados, nunca vêm daqui. Não é escrita de nó (nó 1.34.7
+	 * segue fora desta leva) — é config do computador, sem concorrência com a sessão do Claude Code.
+	 */
+	override async saveConfig(config: BacklogConfig): Promise<void> {
+		writeCanonSettings(config);
 	}
 
 	// --- documentos ------------------------------------------------------------------------------
@@ -507,8 +531,49 @@ export class CanonFileSystem extends FileSystem {
 	}
 
 	/**
-	 * Pergunta pendente do nó (proposta) + decisão formal ADR-/ASR-/"decisão" + desenho aprovado
-	 * referenciado por um nó (aceitas) — backlog-adapter.js:239-283, `decisions`.
+	 * Bullet do `## Journal` em que o Drummond decidiu, verbatim (spec §5, fonte 3) — regra
+	 * CONSERVADORA, testada contra amostras reais (docs/architecture/skill-canon deste repo,
+	 * nó `1.34.12`): melhor deixar de fora do que chamar de decisão o que é investigação/correção
+	 * SOBRE uma decisão. Duas formas aceitas: (a) o marcador abre a linha (até 3 palavras antes —
+	 * "DECIDIDO tempo (...)", "Operador decidiu (...)", "Requisitos decididos pelo Drummond (...)");
+	 * (b) fala entre aspas ("verbatim: '...'") na mesma linha de um "decidiu/decidido(s)" — cobre o
+	 * padrão "Drummond DATA, verbatim: '...'. DECIDIDO: ...". Marcador NO MEIO da frase sem aspas
+	 * ("...descartado pelo rumo novo: o Drummond decidiu tirar...") fica de fora de propósito.
+	 */
+	private static readonly DECISION_LEAD = /^(?:\S+\s+){0,3}(?:DECIDIDO|decidiu|decidido|decididos)\b/;
+	private static readonly DECISION_VERBATIM = /verbatim:\s*['"]/;
+	private static readonly DECISION_WORD = /\bdecidid[oa]s?\b/i;
+
+	private isDecidedJournalLine(line: string): boolean {
+		return (
+			CanonFileSystem.DECISION_LEAD.test(line) ||
+			(CanonFileSystem.DECISION_VERBATIM.test(line) && CanonFileSystem.DECISION_WORD.test(line))
+		);
+	}
+
+	/**
+	 * `## Decisão`/`## Decision` dentro de QUALQUER documento de arquitetura (spec §5, fonte 2) —
+	 * uma seção por decisão, até o próximo `#`/`##`. Não duplica a fonte 1 (arquivo inteiro
+	 * decisão-nomeado): quem chama pula o `absPath` já aceito por `acceptDecisionFile`.
+	 */
+	private extractDecisionSections(content: string): { heading: string; body: string }[] {
+		const headingRe = /^##\s+(Decis(?:ão|ao|ion)\b.*)$/gim;
+		const sections: { heading: string; body: string }[] = [];
+		let match: RegExpExecArray | null = headingRe.exec(content);
+		while (match !== null) {
+			const rest = content.slice(match.index + match[0].length);
+			const next = /^#{1,2}\s+/m.exec(rest);
+			const body = (next ? rest.slice(0, next.index) : rest).trim();
+			if (body) sections.push({ heading: (match[1] ?? "Decisão").trim(), body });
+			match = headingRe.exec(content);
+		}
+		return sections;
+	}
+
+	/**
+	 * As quatro fontes da spec §5: decisão formal (ADR-/ASR-/"decisão" no nome + desenho aprovado
+	 * referenciado por nó), seção `## Decisão…` em documento de arquitetura, registro de nó em que o
+	 * Drummond decidiu (verbatim) e pergunta pendente (`## Perguntas`) — backlog-adapter.js:239-283.
 	 */
 	override async listDecisions(): Promise<Decision[]> {
 		const raw = await this.readRawNodes();
@@ -516,11 +581,11 @@ export class CanonFileSystem extends FileSystem {
 
 		for (const node of raw) {
 			const body = parseCanonNode(node.content, node.id).description ?? "";
+			const context = `Nó ${node.id}: ${body}`;
 			bulletSection(node.content, "Perguntas").forEach((line, index) => {
 				if (!line.startsWith("- [ ]")) return;
 				const dateMatch = /\[(\d{4}-\d{2}-\d{2})/.exec(line);
 				const text = line.replace(/^- \[ \]\s*(\[[^\]]*\]\s*)?/, "").trim();
-				const context = `Nó ${node.id}: ${body}`;
 				decisions.push({
 					id: `decision-pergunta-${node.id}-${index + 1}`,
 					title: text.slice(0, 140),
@@ -532,12 +597,26 @@ export class CanonFileSystem extends FileSystem {
 					rawContent: `## Pergunta\n\n${text}\n\n## Contexto\n\n${context}\n`,
 				});
 			});
+			bulletSection(node.content, "Journal").forEach((line, index) => {
+				const text = line.replace(/^-\s*(\[[^\]]*\]\s*)?/, "").trim();
+				if (!this.isDecidedJournalLine(text)) return;
+				const dateMatch = /\[(\d{4}-\d{2}-\d{2})/.exec(line);
+				decisions.push({
+					id: `decision-no-${node.id}-${index + 1}`,
+					title: text.slice(0, 140),
+					status: "accepted",
+					date: dateMatch?.[1] ?? "",
+					context,
+					decision: text,
+					consequences: "",
+					rawContent: `## Decisão\n\n${text}\n\n## Contexto\n\n${context}\n`,
+				});
+			});
 		}
 
 		const seen = new Set<string>();
-		const decisionFiles = (await this.documentCandidates()).filter((candidate) =>
-			this.isDecisionFile.test(basename(candidate.idPath)),
-		);
+		const allCandidates = await this.documentCandidates();
+		const decisionFiles = allCandidates.filter((candidate) => this.isDecisionFile.test(basename(candidate.idPath)));
 		for (const { absPath, idPath, repoRelPath } of decisionFiles) {
 			await this.acceptDecisionFile(
 				decisions,
@@ -561,6 +640,34 @@ export class CanonFileSystem extends FileSystem {
 				`desenho-${basename(design, ".md")}`,
 				`Desenho aprovado dos nós ${who.join(", ")} (${design})`,
 			);
+		}
+
+		// fonte 2: seção "## Decisão" em qualquer doc, exceto o que já virou decisão inteira (fonte 1).
+		for (const { absPath, idPath, repoRelPath } of allCandidates) {
+			if (seen.has(absPath)) continue;
+			let content: string;
+			try {
+				content = await readFile(absPath, "utf8");
+			} catch {
+				continue;
+			}
+			const sections = this.extractDecisionSections(content);
+			if (!sections.length) continue;
+			const docTitle = /^#\s+(.+)$/m.exec(content)?.[1]?.trim() ?? basename(absPath, ".md");
+			const info = await stat(absPath);
+			const date = formatCanonDate(info.mtime).slice(0, 10);
+			sections.forEach((section, index) => {
+				decisions.push({
+					id: `decision-secao-${idPath.replace(/\.md$/, "").replace(/\//g, "--")}-${index + 1}`,
+					title: /^decis/i.test(section.heading) ? docTitle : section.heading,
+					status: "accepted",
+					date,
+					context: `Seção "${section.heading}" em ${repoRelPath}`,
+					decision: section.body,
+					consequences: "",
+					rawContent: `## ${section.heading}\n\n${section.body}\n`,
+				});
+			});
 		}
 
 		return decisions;
@@ -588,9 +695,6 @@ export class CanonFileSystem extends FileSystem {
 	override async saveDocument(
 		..._args: Parameters<FileSystem["saveDocument"]>
 	): ReturnType<FileSystem["saveDocument"]> {
-		throw new CanonReadOnlyError();
-	}
-	override async saveConfig(..._args: Parameters<FileSystem["saveConfig"]>): ReturnType<FileSystem["saveConfig"]> {
 		throw new CanonReadOnlyError();
 	}
 	override async archiveTask(..._args: Parameters<FileSystem["archiveTask"]>): ReturnType<FileSystem["archiveTask"]> {

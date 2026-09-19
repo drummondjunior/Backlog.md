@@ -12,10 +12,13 @@ import {
 } from '../../types';
 import ErrorBoundary from './ErrorBoundary';
 import { createUrlPath, sanitizeUrlTitle } from '../utils/urlHelpers';
-import { getWebVersion } from '../utils/version';
 import { apiClient } from '../lib/api';
 import { parseSearchCommandQuery } from '../utils/search-command-query';
 import { buildDocsTree, type DocsTreeNode } from '../lib/docs-tree';
+// drummond-canon: seções Projetos/Nós + versão do plugin no rodapé (nó 1.34.12).
+import ProjectsSection from '../../canon/web/ProjectsSection';
+import NodesTree from '../../canon/web/NodesTree';
+import CanonVersion from '../../canon/web/CanonVersion';
 
 // Utility functions for ID transformations
 const stripIdPrefix = (id: string): string => {
@@ -305,7 +308,6 @@ const SideNavigation = memo(function SideNavigation({
 		// Auto-collapse if more than 6 decisions
 		return decisions.length > 6;
 	});
-	const [version, setVersion] = useState<string>('');
 	const location = useLocation();
 	const navigate = useNavigate();
 
@@ -321,11 +323,6 @@ const SideNavigation = memo(function SideNavigation({
 	useEffect(() => {
 		localStorage.setItem('sideNavCollapsed', JSON.stringify(isCollapsed));
 	}, [isCollapsed]);
-
-	// Fetch version on mount
-	useEffect(() => {
-		getWebVersion().then(setVersion).catch(() => setVersion(''));
-	}, []);
 
 	// Save docs collapse state to localStorage
 	useEffect(() => {
@@ -854,6 +851,11 @@ const SideNavigation = memo(function SideNavigation({
 								</div>
 							)}
 						</div>
+
+						{/* drummond-canon: Projetos/Nós (nó 1.34.12) — some sozinha sem o serviço do canon */}
+						<div className="mx-4 my-2 border-t border-gray-200 dark:border-gray-700"></div>
+						<ProjectsSection />
+						<NodesTree />
 					</>
 				)}
 
@@ -995,9 +997,8 @@ const SideNavigation = memo(function SideNavigation({
 					>
 						<Icons.DocumentSettings />
 						<span className="ml-3 text-sm font-medium">Settings</span>
-						{version && (
-							<span className="ml-auto text-xs text-gray-500 dark:text-gray-400">Backlog.md - v{version}</span>
-						)}
+						{/* drummond-canon: versão do plugin, curta — a de hoje ("Backlog.md - v...") quebrava o rodapé */}
+						<CanonVersion />
 					</NavLink>
 				) : (
 					<NavLink

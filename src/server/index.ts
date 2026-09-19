@@ -418,6 +418,7 @@ export class BacklogServer {
 					"/decisions/*": spaIndexHtml,
 					"/statistics": spaIndexHtml,
 					"/settings": spaIndexHtml,
+					"/projects": spaIndexHtml, // drummond-canon: página de Projetos do computador (nó 1.34.12)
 
 					// API Routes using Bun's native route syntax
 					"/api/tasks": {

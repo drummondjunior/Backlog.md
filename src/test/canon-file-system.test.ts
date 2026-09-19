@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { setCanonIdentity } from "../canon/identity.ts";
 import { CanonFileSystem, CanonReadOnlyError, createFileSystem } from "../canon/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
+import type { BacklogConfig } from "../types/index.ts";
 
 const ROOT = join(import.meta.dir, "fixtures", "canon-project");
 
@@ -20,6 +21,12 @@ describe("CanonFileSystem", () => {
 		const ids = (await createFileSystem(ROOT).listTasks()).map((t) => t.id);
 		expect(ids).toEqual(["1", "1.2", "1.2.1", "1.10", "3.1.a", "11.o", "20"]);
 	});
+	test("nó estrutural por tipo (não só por status) some do quadro/lista, mas continua legível (1.34.10.5.3)", async () => {
+		const fs = createFileSystem(ROOT);
+		const ids = (await fs.listTasks()).map((t) => t.id);
+		expect(ids).not.toContain("1.11");
+		expect((await fs.loadTask("1.11"))?.id).toBe("1.11");
+	});
 	test("carrega um nó pelo número, inclusive com letra", async () => {
 		expect((await createFileSystem(ROOT).loadTask("11.o"))?.id).toBe("11.o");
 	});
@@ -36,5 +43,26 @@ describe("CanonFileSystem", () => {
 	test("gravar recusa", async () => {
 		const fs = createFileSystem(ROOT);
 		await expect(fs.saveTask({ id: "9" } as never)).rejects.toBeInstanceOf(CanonReadOnlyError);
+	});
+	test("config geral: saveConfig grava no computador, não recusa (nó 1.34.12)", async () => {
+		const settingsFile = join(import.meta.dir, "fixtures", "canon-settings.test.json");
+		const previousEnv = process.env.CANON_SETTINGS_FILE;
+		process.env.CANON_SETTINGS_FILE = settingsFile;
+		try {
+			const fs = createFileSystem(ROOT);
+			const before = await fs.loadConfig();
+			expect(before?.dateFormat).toBe("yyyy-mm-dd hh:mm");
+			await fs.saveConfig({ ...(before as BacklogConfig), dateFormat: "dd/mm/yyyy", projectName: "outro nome" });
+			const after = await fs.loadConfig();
+			expect(after?.dateFormat).toBe("dd/mm/yyyy");
+			// projectName continua computado do projeto, nunca sobrescrito pela config geral.
+			expect(after?.projectName).toBe("proj");
+		} finally {
+			if (previousEnv === undefined) delete process.env.CANON_SETTINGS_FILE;
+			else process.env.CANON_SETTINGS_FILE = previousEnv;
+			await Bun.file(settingsFile)
+				.delete()
+				.catch(() => {});
+		}
 	});
 });

@@ -7,6 +7,8 @@ import DecisionDetail from './components/DecisionDetail';
 import TaskList from './components/TaskList';
 import DraftsList from './components/DraftsList';
 import Settings from './components/Settings';
+// drummond-canon: página de Projetos do computador (nó 1.34.12).
+import ProjectsPage from '../canon/web/ProjectsPage';
 import Statistics from './components/Statistics';
 import MilestonesPage from './components/MilestonesPage';
 import TaskDetailsModal from './components/TaskDetailsModal';
@@ -1048,6 +1050,8 @@ function AppContent() {
             <Route path="decisions/:id/:title" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
             <Route path="statistics" element={<Statistics tasks={tasks} isLoading={isLoading} onEditTask={handleEditTask} projectName={projectName} dateFormat={config?.dateFormat} />} />
             <Route path="settings" element={<Settings />} />
+            {/* drummond-canon: nó 1.34.12 */}
+            <Route path="projects" element={<ProjectsPage />} />
           </Route>
       </Routes>
 
