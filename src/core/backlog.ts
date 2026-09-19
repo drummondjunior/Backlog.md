@@ -380,9 +380,12 @@ function assertSectionInputsSafe(input: {
 // drummond-canon: o conector é carregado na hora de criar o FileSystem, não no carregamento deste arquivo —
 // operations.ts → task-path.ts → core/backlog.ts → canon → operations.ts fecharia um ciclo de import, e a classe
 // do conector estenderia FileSystem antes de ele existir.
-function createFileSystem(projectRoot: string): FileSystem {
+// Num projeto do canon, o núcleo também fica somente leitura (canon/read-only-core.ts, nó 1.34.10.5.2).
+function createFileSystem(projectRoot: string, core: object): FileSystem {
 	const canon = require("../canon/index.ts") as typeof import("../canon/index.ts");
-	return canon.createFileSystem(projectRoot);
+	const fileSystem = canon.createFileSystem(projectRoot);
+	canon.guardCanonCore(core, fileSystem);
+	return fileSystem;
 }
 
 export class Core {
@@ -404,7 +407,7 @@ export class Core {
 	private lastRemoteRefRefreshAt = 0;
 
 	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
-		this.fs = createFileSystem(projectRoot); // drummond-canon
+		this.fs = createFileSystem(projectRoot, this); // drummond-canon
 		this.git = new GitOperations(projectRoot, null, () => this.fs.loadConfig());
 		this.branchTaskLoader = new BranchTaskLoader(this.git);
 		// Disable watchers by default for CLI commands (non-interactive)
@@ -1218,7 +1221,7 @@ export class Core {
 		this.projectGeneration += 1;
 		this.disposeSearchService();
 		this.disposeContentStore();
-		this.fs = createFileSystem(projectRoot); // drummond-canon
+		this.fs = createFileSystem(projectRoot, this); // drummond-canon
 		this.git = new GitOperations(projectRoot, null, () => this.fs.loadConfig());
 		this.branchTaskLoader = new BranchTaskLoader(this.git);
 	}

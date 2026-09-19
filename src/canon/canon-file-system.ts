@@ -14,7 +14,6 @@ import { existsSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, join, relative, resolve } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
-import { parseMarkdown } from "../markdown/parser.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import { compareCanonIds } from "./identity.ts";
 import {
@@ -26,6 +25,7 @@ import {
 	parseCanonNode,
 	rawField,
 	STATUS_NAMES,
+	safeParseMarkdown,
 } from "./node-codec.ts";
 import type { CanonProject } from "./project.ts";
 
@@ -320,7 +320,7 @@ export class CanonFileSystem extends FileSystem {
 			type: "other",
 			createdDate: modified,
 			updatedDate: modified,
-			rawContent: parseMarkdown(content).content,
+			rawContent: safeParseMarkdown(content).content,
 			name: basename(relativePath),
 			path: relativePath,
 			lastModified: modified,

@@ -44,6 +44,19 @@ const FRONTMATTER_BLOCK = /^---\r?\n([\s\S]*?)\r?\n---/;
  * Exportado: `CanonFileSystem` (1.34.10.4) precisa do mesmo campo cru para status/parent/desenho
  * ao listar o projeto inteiro, antes de decidir se um nó vira Task.
  */
+/**
+ * parseMarkdown deles, sem deixar um cabeçalho que o YAML não lê derrubar a leitura (nó 1.34.10.5.2: um documento
+ * do PHC com "title: 06 — Comercial CRM: as-built ..." fazia o quadro dizer "não encontrado" para qualquer nó).
+ * Cabeçalho ruim → sem campos de YAML, e o corpo é o texto depois do cabeçalho.
+ */
+export function safeParseMarkdown(content: string): { frontmatter: Record<string, unknown>; content: string } {
+	try {
+		return parseMarkdown(content);
+	} catch {
+		return { frontmatter: {}, content: content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "") };
+	}
+}
+
 export function rawField(rawFrontmatter: string, name: string): string {
 	const match = new RegExp(`^${name}:[ \\t]*"?([^"\\n]*)"?[ \\t]*$`, "m").exec(rawFrontmatter);
 	return match ? (match[1] ?? "").trim() : "";
@@ -123,7 +136,7 @@ function stringArray(value: unknown): string[] {
  * lidos com o nome que o Backlog.md grava no arquivo, com os mesmos normalizadores do `parseTask`.
  */
 export function parseCanonNode(content: string, fileId?: string): Task {
-	const { frontmatter, content: rawContent } = parseMarkdown(content);
+	const { frontmatter, content: rawContent } = safeParseMarkdown(content);
 	const fm = frontmatterText(content);
 	const id = fileId ?? rawField(fm, "id");
 

@@ -21,3 +21,5 @@ export function createFileSystem(projectRoot: string): FileSystem {
 	if (!project) return new FileSystem(projectRoot);
 	return new CanonFileSystem(projectRoot, project);
 }
+
+export { guardCanonCore, MUTATING_CORE_METHODS } from "./read-only-core.ts";
