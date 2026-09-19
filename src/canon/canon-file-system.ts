@@ -280,8 +280,47 @@ export class CanonFileSystem extends FileSystem {
 		return this.tasksWhere(raw, this.buildTasks(raw), (node) => this.archivedStatuses.has(node.statusCode));
 	}
 
+	/**
+	 * Um Milestone por marco derivado (node-codec.ts `deriveMilestoneId`) com pelo menos um nó —
+	 * estrutural fora, DONE/board dentro (fica visível até alguém arquivar o próprio ancestral;
+	 * spec do despacho 1.43). Título = o do nó ancestral quando existe; senão o próprio id.
+	 */
 	override async listMilestones(): Promise<Milestone[]> {
-		return [];
+		const raw = await this.readRawNodes();
+		const tasks = this.buildTasks(raw);
+		// Marco cujo próprio ancestral está arquivado sai daqui — mora só em listArchivedMilestones(),
+		// mutuamente exclusivo como as pastas ativa/arquivada da base (evita duplicar na tela).
+		const archivedIds = new Set(raw.filter((n) => this.archivedStatuses.has(n.statusCode)).map((n) => n.id));
+		const ids = new Set<string>();
+		for (const node of raw) {
+			if (node.statusCode === this.structuralStatus) continue;
+			const milestoneId = tasks.get(node.id)?.milestone;
+			if (milestoneId && !archivedIds.has(milestoneId)) ids.add(milestoneId);
+		}
+		return [...ids].sort(compareCanonIds).map((id) => ({
+			id,
+			title: tasks.get(id)?.title ?? id,
+			description: "",
+			rawContent: "",
+		}));
+	}
+
+	/**
+	 * Marco arquivado = o próprio nó ancestral está no grupo "archived" (REJECTED/SUPERSEDED) do mapa
+	 * central. DONE fica fora de propósito: a tela usa este método para ZERAR `task.milestone` em
+	 * todo lugar (App.tsx `applySearchResults`), e um marco concluído ainda precisa aparecer com
+	 * progresso 100% na página de Milestones — tratá-lo como arquivado apagaria isso (desvio do texto
+	 * literal do despacho "DONE/archived", registrado no relatório).
+	 */
+	override async listArchivedMilestones(): Promise<Milestone[]> {
+		const raw = await this.readRawNodes();
+		const tasks = this.buildTasks(raw);
+		return raw
+			.filter((node) => this.archivedStatuses.has(node.statusCode))
+			.map((node) => tasks.get(node.id))
+			.filter((task): task is Task => task !== undefined)
+			.sort((a, b) => compareCanonIds(a.id, b.id))
+			.map((task) => ({ id: task.id, title: task.title, description: "", rawContent: "" }));
 	}
 
 	// --- config / status -----------------------------------------------------------------------

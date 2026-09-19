@@ -18,7 +18,7 @@ describe("CanonFileSystem", () => {
 	});
 	test("lista os nós de trabalho, sem o estrutural, na ordem da árvore", async () => {
 		const ids = (await createFileSystem(ROOT).listTasks()).map((t) => t.id);
-		expect(ids).toEqual(["1", "1.2", "1.10", "11.o", "20"]);
+		expect(ids).toEqual(["1", "1.2", "1.2.1", "1.10", "3.1.a", "11.o", "20"]);
 	});
 	test("carrega um nó pelo número, inclusive com letra", async () => {
 		expect((await createFileSystem(ROOT).loadTask("11.o"))?.id).toBe("11.o");

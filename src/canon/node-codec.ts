@@ -68,6 +68,22 @@ export function getInvalidStatus(): string {
 	return statusState().invalid;
 }
 
+/** Profundidade do marco derivado (mapa central `fields.milestone.derivedDepth`; 2 se ausente). */
+function milestoneDerivedDepth(): number {
+	const milestoneField = loadBacklogMap().fields.milestone as { derivedDepth?: number } | undefined;
+	return milestoneField?.derivedDepth ?? 2;
+}
+
+/**
+ * Marco derivado quando o nó não tem `milestone` explícito: ancestral feito dos primeiros `depth`
+ * segmentos do id (1.34.10.7 → "1.34" com depth 2; PHC "3.1.c" → "3.1"). Id com menos segmentos que
+ * `depth` fica sem marco. Decisão do Drummond 2026-09-19 (nó 1.43).
+ */
+export function deriveMilestoneId(id: string, depth: number = milestoneDerivedDepth()): string | undefined {
+	const segments = id.split(".");
+	return segments.length < depth ? undefined : segments.slice(0, depth).join(".");
+}
+
 /**
  * Colunas do quadro, na ordem em que o trabalho anda (backlog-adapter.js:23, `COLUNAS`). Recusado e
  * Substituído não têm coluna — são arquivamento (nó 1.34.10.4, spec §4.1), não board.
@@ -241,7 +257,7 @@ export function parseCanonNode(content: string, fileId?: string): Task {
 		updatedDate: frontmatter.updated_date ? formatCanonDate(frontmatter.updated_date) : undefined,
 		dueDate: normalizeDueDate(frontmatter.due_date, "due_date"),
 		labels,
-		milestone: stringOrUndefined(frontmatter.milestone),
+		milestone: stringOrUndefined(frontmatter.milestone) ?? deriveMilestoneId(id),
 		dependencies: stringArray(frontmatter.dependencies),
 		references,
 		documentation: stringArray(frontmatter.documentation),

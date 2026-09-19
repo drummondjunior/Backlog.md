@@ -39,7 +39,11 @@
 		"priority": { "canon": "same" },
 		"type": { "canon": "same" },
 		"project": { "canon": "same" },
-		"milestone": { "canon": "same" },
+		"milestone": {
+			"canon": "same",
+			"derivedDepth": 2,
+			"note": "sem o campo, o marco é o ancestral com os 2 primeiros números do id (1.34.10.7 → 1.34); nó de 1 número fica sem. Decisão do Drummond 2026-09-19 (1.43)"
+		},
 		"dependencies": { "canon": "same", "plus": "aresta blocks" },
 		"references": { "canon": "same", "plus": "desenho, review" },
 		"documentation": { "canon": "same" },
@@ -56,12 +60,7 @@
 		"implementation_plan": { "canon": "same", "section": "## Implementation Plan" },
 		"implementation_notes": { "canon": "## Journal" },
 		"final_summary": { "canon": "same", "section": "## Final Summary" },
-		"comments": { "canon": "same", "section": "## Comments" },
-		"milestone_as_node": {
-			"canon": "missing",
-			"node": "1.43",
-			"note": "marco do Backlog.md ↔ nó de nível alto do canon: a avaliar"
-		}
+		"comments": { "canon": "same", "section": "## Comments" }
 	},
 	"values": {
 		"type": ["bug", "feature", "enhancement", "task", "chore", "docs", "spike"],
