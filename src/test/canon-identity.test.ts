@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { compareCanonIds, isCanonId, setCanonIdentity } from "../canon/identity.ts";
-import { normalizeId } from "../utils/prefix-config.ts";
+import { hasAnyPrefix, normalizeId } from "../utils/prefix-config.ts";
 import { canonicalTaskId, isValidTaskId } from "../utils/task-id.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
 
@@ -23,6 +23,14 @@ describe("canon identity", () => {
 		expect(normalizeId("back-12", "back")).toBe("BACK-12");
 		expect(isValidTaskId("11.o")).toBe(false);
 		expect(canonicalTaskId("1.40", "back")).toBe("BACK-1.40");
+		expect(hasAnyPrefix("1.40")).toBe(false);
+	});
+
+	test("projeto do canon: o quadro e o visualizador não descartam o nó por não ter prefixo", () => {
+		setCanonIdentity(true);
+		expect(hasAnyPrefix("1.40")).toBe(true);
+		expect(hasAnyPrefix("11.o")).toBe(true);
+		expect(hasAnyPrefix("back-12")).toBe(true);
 	});
 
 	test("projeto do canon: o número passa intacto, inclusive com letra, e ordena como a árvore", () => {

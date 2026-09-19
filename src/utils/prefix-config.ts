@@ -238,6 +238,7 @@ export function hasPrefix(id: string, prefix: string): boolean {
  */
 export function hasAnyPrefix(id: string): boolean {
 	if (!id || typeof id !== "string") return false;
+	if (usesCanonIdentity(id)) return true; // drummond-canon: nó Dewey não tem prefixo e é tarefa válida
 	return /^[a-zA-Z]+-\S/.test(id.trim());
 }
 
