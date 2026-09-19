@@ -25,6 +25,14 @@ export const STATUS_NAMES: Record<string, string> = {
 /** Estado fora do canon: aparece, nunca some (backlog-adapter.js:24-26). */
 export const INVALID_STATUS = "Estado inválido";
 
+/**
+ * Colunas do quadro, na ordem em que o trabalho anda (backlog-adapter.js:23, `COLUNAS`). Recusado e
+ * Substituído não têm coluna — são arquivamento (nó 1.34.10.4, spec §4.1), não board.
+ */
+export const COLUMNS = Object.entries(STATUS_NAMES)
+	.filter(([code]) => code !== "REJECTED" && code !== "SUPERSEDED")
+	.map(([, label]) => label);
+
 const CANON_BLOCK = /```canon\n([\s\S]*?)```/;
 const FRONTMATTER_BLOCK = /^---\r?\n([\s\S]*?)\r?\n---/;
 
@@ -33,13 +41,15 @@ const FRONTMATTER_BLOCK = /^---\r?\n([\s\S]*?)\r?\n---/;
  * `campo`). Um id Dewey como "1.40" é sintaxe válida de float em YAML — resolvido, vira o número
  * 1.4 e perde o zero à direita. Os campos que o próprio canon grava (id, status, parent, tipo,
  * gerado_em, desenho, review) sempre saem daqui; só os campos novos do Backlog.md usam o YAML.
+ * Exportado: `CanonFileSystem` (1.34.10.4) precisa do mesmo campo cru para status/parent/desenho
+ * ao listar o projeto inteiro, antes de decidir se um nó vira Task.
  */
-function rawField(frontmatterText: string, name: string): string {
-	const match = new RegExp(`^${name}:[ \\t]*"?([^"\\n]*)"?[ \\t]*$`, "m").exec(frontmatterText);
+export function rawField(rawFrontmatter: string, name: string): string {
+	const match = new RegExp(`^${name}:[ \\t]*"?([^"\\n]*)"?[ \\t]*$`, "m").exec(rawFrontmatter);
 	return match ? (match[1] ?? "").trim() : "";
 }
 
-function frontmatterText(content: string): string {
+export function frontmatterText(content: string): string {
 	return FRONTMATTER_BLOCK.exec(content)?.[1] ?? "";
 }
 
@@ -79,8 +89,11 @@ function nodeTitle(body: string): string {
 	return title.length > 140 ? `${title.slice(0, 139).trimEnd()}…` : title;
 }
 
-/** backlog-adapter.js:44-47 (secao) — linhas marcadas ("- ") dentro de uma seção `## <heading>`. */
-function bulletSection(text: string, heading: string): string[] {
+/**
+ * backlog-adapter.js:44-47 (secao) — linhas marcadas ("- ") dentro de uma seção `## <heading>`.
+ * Exportado: `CanonFileSystem` reusa para ler "## Perguntas" ao montar decisões (spec §5).
+ */
+export function bulletSection(text: string, heading: string): string[] {
 	const match = new RegExp(`\\n## ${heading}\\n([\\s\\S]*?)(\\n## |$)`).exec(text);
 	return match ? (match[1] ?? "").split("\n").filter((line) => line.startsWith("- ")) : [];
 }
@@ -88,8 +101,10 @@ function bulletSection(text: string, heading: string): string[] {
 /**
  * backlog-adapter.js:38-42 (`data`). Aceita string crua (id/status/gerado_em, lidos via `rawField`)
  * ou Date (campo novo lido pelo YAML deles, que resolve timestamp não citado — `updated_date`).
+ * Exportado: `CanonFileSystem` reusa para formatar a data de criação vinda do git e a data de
+ * decisão formal vinda do mtime do arquivo.
  */
-function formatCanonDate(value: unknown): string {
+export function formatCanonDate(value: unknown): string {
 	const str = value instanceof Date ? value.toISOString() : String(value ?? "");
 	const match = /(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/.exec(str);
 	return match ? `${match[1]} ${match[2]}` : "";

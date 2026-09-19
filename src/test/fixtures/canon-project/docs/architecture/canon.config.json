@@ -1,0 +1,10 @@
+{
+	"sistema": "P",
+	"repoName": "proj",
+	"paths": {
+		"monolith": "docs/architecture/00-work-tree-canon.md",
+		"dataDir": "docs/architecture/proj-canon",
+		"pendenciasDir": "docs/architecture/pendencias-pre-canon",
+		"vaultRoot": "docs"
+	}
+}
