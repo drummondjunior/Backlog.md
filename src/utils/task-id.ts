@@ -1,3 +1,4 @@
+import { usesCanonIdentity } from "../canon/identity.ts"; // drummond-canon
 import type { Task } from "../types/index.ts";
 import { escapeRegex, extractAnyPrefix, normalizeId } from "./prefix-config.ts";
 
@@ -36,6 +37,7 @@ function canonicalDecimalSegment(segment: string): string {
 
 /** Return the stable identity used to group task IDs without numeric coercion. */
 export function canonicalTaskId(taskId: string, prefix: string = DEFAULT_TASK_PREFIX): string {
+	if (usesCanonIdentity(taskId)) return taskId.trim(); // drummond-canon
 	const trimmed = taskId.trim();
 	const inferredPrefix = extractAnyPrefix(trimmed);
 	const effectivePrefix = inferredPrefix ?? prefix;
@@ -90,6 +92,7 @@ export function isNumericTaskId(value: string): boolean {
 
 export function isValidTaskId(value: string): boolean {
 	const trimmed = value.trim();
+	if (usesCanonIdentity(trimmed)) return true; // drummond-canon
 	return isNumericTaskId(trimmed) || LEGACY_TASK_ID_PATTERN.test(trimmed);
 }
 

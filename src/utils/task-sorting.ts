@@ -1,3 +1,4 @@
+import { compareCanonIds, usesCanonIdentity } from "../canon/identity.ts"; // drummond-canon
 import { getPriorityRank } from "./priority-config.ts";
 
 /**
@@ -44,6 +45,7 @@ export function parseTaskId(taskId: string): number[] {
  * - task-2.2 comes before task-2.10
  */
 export function compareTaskIds(a: string, b: string): number {
+	if (usesCanonIdentity(a) && usesCanonIdentity(b)) return compareCanonIds(a, b); // drummond-canon
 	const aParts = parseTaskId(a);
 	const bParts = parseTaskId(b);
 

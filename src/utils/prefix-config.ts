@@ -1,3 +1,4 @@
+import { usesCanonIdentity } from "../canon/identity.ts"; // drummond-canon
 import { type BacklogConfig, EntityType, type PrefixConfig } from "../types/index.ts";
 
 /**
@@ -92,6 +93,7 @@ export function mergePrefixConfig(config?: Partial<PrefixConfig>): PrefixConfig 
  */
 export function normalizeId(id: string, prefix: string): string {
 	const trimmed = id.trim();
+	if (usesCanonIdentity(trimmed)) return trimmed; // drummond-canon: nó Dewey passa intacto
 	const upperPrefix = prefix.toUpperCase();
 	const prefixPattern = new RegExp(`^${escapeRegex(prefix)}-(.+)$`, "i");
 	const match = trimmed.match(prefixPattern);
