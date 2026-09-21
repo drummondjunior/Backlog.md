@@ -18,7 +18,7 @@ import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import type { BacklogMap } from "./backlog-map.ts";
-import { loadBacklogMap } from "./backlog-map.ts";
+import { documentGlobs, loadBacklogMap } from "./backlog-map.ts";
 import { readCanonSettings, writeCanonSettings } from "./canon-settings.ts";
 import { compareCanonIds } from "./identity.ts";
 import {
@@ -419,7 +419,7 @@ export class CanonFileSystem extends FileSystem {
 	}
 
 	/**
-	 * Documento = todo `.md` dentro das pastas do mapa central (`folders.documents`, §4.3: hoje
+	 * Documento = todo `.md` dentro das pastas do mapa central (`folders.kinds`: padrão e alternativas de cada tipo, §4.3: hoje
 	 * `docs/architecture/**`, `docs/superpowers/specs/**`, `docs/superpowers/plans/**`,
 	 * `docs/plans/**`), fora do que o mapa exclui (`folders.excluded`) e sempre fora do `dataDir` dos
 	 * nós (excluído mesmo que a sobreposição do repo troque `folders.excluded` inteiro).
@@ -429,7 +429,8 @@ export class CanonFileSystem extends FileSystem {
 	 * de `docs/architecture` (as pastas novas) usa o caminho relativo à RAIZ DO REPO (`doc-docs--plans--x`).
 	 */
 	private async documentCandidates(): Promise<DocumentCandidate[]> {
-		const documentGlobs = this.map.folders.documents.map((pattern) => new Bun.Glob(pattern));
+		const documentPatterns = documentGlobs(this.map);
+		const documentMatchers = documentPatterns.map((pattern) => new Bun.Glob(pattern));
 		const excludedGlobs = this.map.folders.excluded.map((pattern) => new Bun.Glob(pattern));
 		const dataDirRel = relative(this.project.repoRoot, this.project.dataDir);
 
@@ -440,7 +441,7 @@ export class CanonFileSystem extends FileSystem {
 		};
 
 		const absFiles = new Set<string>();
-		for (const root of CanonFileSystem.scanRoots(this.map.folders.documents)) {
+		for (const root of CanonFileSystem.scanRoots(documentPatterns)) {
 			const absRoot = join(this.project.repoRoot, root);
 			if (!existsSync(absRoot)) continue;
 			for (const absPath of await this.walkMarkdownFiles(absRoot, skipDir)) absFiles.add(absPath);
@@ -450,7 +451,7 @@ export class CanonFileSystem extends FileSystem {
 		for (const absPath of absFiles) {
 			const repoRelPath = relative(this.project.repoRoot, absPath).split("\\").join("/");
 			if (repoRelPath === dataDirRel || repoRelPath.startsWith(`${dataDirRel}/`)) continue;
-			if (!documentGlobs.some((glob) => glob.match(repoRelPath))) continue;
+			if (!documentMatchers.some((glob) => glob.match(repoRelPath))) continue;
 			if (excludedGlobs.some((glob) => glob.match(repoRelPath))) continue;
 
 			const archRelPath = relative(this.project.archDir, absPath).split("\\").join("/");

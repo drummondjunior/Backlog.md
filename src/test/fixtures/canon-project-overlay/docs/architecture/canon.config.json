@@ -5,7 +5,11 @@
 	},
 	"backlog": {
 		"folders": {
-			"documents": ["docs/custom/**"]
+			"kinds": {
+				"architecture": {
+					"standard": "docs/custom"
+				}
+			}
 		}
 	}
 }

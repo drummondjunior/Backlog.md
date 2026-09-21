@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { loadBacklogMap } from "../canon/backlog-map.ts";
+import { documentGlobs, loadBacklogMap } from "../canon/backlog-map.ts";
 import { setCanonIdentity } from "../canon/identity.ts";
 import { createFileSystem } from "../canon/index.ts";
 
@@ -16,7 +16,7 @@ describe("mapa central canon ↔ Backlog.md", () => {
 
 	test("carrega o mapa base (pastas, estados, valores)", () => {
 		const map = loadBacklogMap();
-		expect(map.folders.documents).toContain("docs/architecture/**");
+		expect(documentGlobs(map)).toContain("docs/architecture/**");
 		expect(map.statuses.DOING?.column).toBe("Em curso");
 		expect(map.values.nodeTypeLegacy.correcao).toBe("correção");
 	});
@@ -46,12 +46,17 @@ describe("mapa central canon ↔ Backlog.md", () => {
 		expect(spec?.title).toBe("Spec de exemplo");
 	});
 
-	test("sobreposição do repo troca folders.documents inteiro (canon.config.json > backlog)", async () => {
+	test("sobreposição do repo troca só o tipo que declara (folders.kinds em canon.config.json > backlog)", async () => {
 		const docs = await createFileSystem(OVERLAY_PROJECT).listDocuments();
 		const paths = docs.map((d) => d.path);
 		expect(paths).toContain("docs/custom/note.md");
 		expect(paths).not.toContain("should-not-appear.md");
 		expect(docs.find((d) => d.path === "docs/custom/note.md")?.id).toBe("doc-docs--custom--note");
+	});
+
+	test("pasta oculta do mapa (.claude/specs) é lida", async () => {
+		const docs = await createFileSystem(BASE_PROJECT).listDocuments();
+		expect(docs.map((d) => d.path)).toContain(".claude/specs/hidden-spec.md");
 	});
 
 	test("o dataDir dos nós nunca aparece como documento, mesmo sob a pasta observada", async () => {

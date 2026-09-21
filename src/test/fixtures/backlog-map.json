@@ -1,8 +1,22 @@
 {
 	"_doc": "Mapa central canon ↔ Backlog.md (nó 1.34.10.7). Fonte única: o conector (fork backlog-md-canon) e o node-edit leem daqui; nenhum dos dois guarda lista própria. Por repo, só o que muda, na chave 'backlog' do canon.config.json. Campo com 'canon': 'missing' é o que o canon ainda não tem — e tem de citar o nó que o desenvolve.",
 	"folders": {
-		"_doc": "Padrões relativos à raiz do repo. '**' = qualquer subpasta. 'nodes' é o dataDir do canon.config.json.",
-		"documents": ["docs/architecture/**", "docs/superpowers/specs/**", "docs/superpowers/plans/**", "docs/plans/**"],
+		"_doc": "Caminhos relativos à raiz do repo. kinds = por tipo de documento: standard = onde nasce; alternatives = onde também se procura; dirName = nome de pasta buscado em qualquer lugar; filePattern separa tipos que dividem pasta. Em excluded, '**' = qualquer subpasta.",
+		"kinds": {
+			"plans": { "standard": "docs/plans", "alternatives": ["docs/superpowers/plans"], "dirName": "plans" },
+			"handoffs": {
+				"standard": "docs/plans",
+				"alternatives": ["docs/superpowers/plans"],
+				"dirName": "plans",
+				"filePattern": "^HANDOFF-.*\\.md$"
+			},
+			"specs": {
+				"standard": "docs/specs",
+				"alternatives": ["docs/superpowers/specs", ".claude/specs"],
+				"dirName": "specs"
+			},
+			"architecture": { "standard": "docs/architecture", "alternatives": [], "dirName": "architecture" }
+		},
 		"excluded": ["**/_backup/**", "**/*-backlog/**", "**/*-canon/**"],
 		"decisionFileNames": ["^ADR-\\d+", "^ASR-\\d+", "decis"]
 	},

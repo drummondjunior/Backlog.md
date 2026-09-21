@@ -13,8 +13,13 @@ export interface BacklogMapStatus {
 	draft?: boolean;
 }
 
+export interface BacklogMapDocumentKind {
+	standard: string;
+	alternatives?: string[];
+}
+
 export interface BacklogMapFolders {
-	documents: string[];
+	kinds: Record<string, BacklogMapDocumentKind>;
 	excluded: string[];
 	decisionFileNames: string[];
 }
@@ -90,4 +95,10 @@ export function loadBacklogMap(repoRoot?: string): BacklogMap {
 	const base = loadBaseMap();
 	if (!repoRoot) return base;
 	return overlay(base, repoOverride(repoRoot)) as BacklogMap;
+}
+
+/** Globs dos documentos: a pasta padrão e as alternativas de cada tipo (drummond-canon 1.35.13.6). */
+export function documentGlobs(map: BacklogMap): string[] {
+	const dirs = Object.values(map.folders.kinds).flatMap((kind) => [kind.standard, ...(kind.alternatives ?? [])]);
+	return [...new Set(dirs)].map((dir) => `${dir}/**`);
 }
