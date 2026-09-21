@@ -29,7 +29,7 @@
 		"VERIFY": { "column": "A verificar", "group": "board" },
 		"ACTIVE": { "column": "Ativo", "group": "board" },
 		"DEFERRED": { "column": "Adiado", "group": "board" },
-		"DONE": { "column": "Entregue", "group": "completed" },
+		"DONE": { "column": "Entregue", "group": "board" },
 		"REJECTED": { "column": "Recusado", "group": "archived" },
 		"SUPERSEDED": { "column": "Substituído", "group": "archived" },
 		"estrutural": { "column": null, "group": "structural" },

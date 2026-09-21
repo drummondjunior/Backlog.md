@@ -107,7 +107,7 @@ export class CanonFileSystem extends FileSystem {
 	private readonly structuralStatus: string;
 	// Arquivamento (spec §4.1): grupo "completed" vira concluído, "archived" vira arquivado. "board"
 	// (inclusive DEFERRED) continua no quadro normal.
-	private readonly doneStatus: string;
+	private readonly doneStatus?: string;
 	private readonly archivedStatuses: Set<string>;
 	private readonly draftStatus?: string;
 	// Decisão formal no nome do arquivo (backlog-adapter.js:240): ADR-NNN, ASR-NNNN, "…decisão…" — do mapa.
@@ -119,7 +119,7 @@ export class CanonFileSystem extends FileSystem {
 		this.map = loadBacklogMap(project.repoRoot);
 
 		let structuralStatus = "estrutural";
-		let doneStatus = "DONE";
+		let doneStatus: string | undefined;
 		let draftStatus: string | undefined;
 		const archivedStatuses = new Set<string>();
 		for (const [code, info] of Object.entries(this.map.statuses)) {
@@ -280,7 +280,10 @@ export class CanonFileSystem extends FileSystem {
 		return this.tasksWhere(raw, this.buildTasks(raw), (node) => node.statusCode === this.draftStatus);
 	}
 
-	/** Concluído (spec §4.1): grupo "completed" (DONE). Nada muda de pasta — responde pelo estado. */
+	/**
+	 * Concluído (spec §4.1): grupo "completed", se o mapa tiver um. O Backlog.md só mostra esta pasta nas
+	 * estatísticas, então o DONE fica no grupo "board" para aparecer na tela (drummond-canon 1.34.13.1).
+	 */
 	override async listCompletedTasks(): Promise<Task[]> {
 		const raw = await this.readRawNodes();
 		return this.tasksWhere(raw, this.buildTasks(raw), (node) => node.statusCode === this.doneStatus);

@@ -19,7 +19,7 @@ describe("CanonFileSystem", () => {
 	});
 	test("lista os nós de trabalho, sem o estrutural, na ordem da árvore", async () => {
 		const ids = (await createFileSystem(ROOT).listTasks()).map((t) => t.id);
-		expect(ids).toEqual(["1", "1.2", "1.2.1", "1.10", "3.1.a", "11.o", "20"]);
+		expect(ids).toEqual(["1", "1.2", "1.2.1", "1.2.9", "1.10", "3.1.a", "11.o", "20"]); // DONE (1.2.9) is listed: drummond-canon 1.34.13.1
 	});
 	test("nó estrutural por tipo (não só por status) some do quadro/lista, mas continua legível (1.34.10.5.3)", async () => {
 		const fs = createFileSystem(ROOT);

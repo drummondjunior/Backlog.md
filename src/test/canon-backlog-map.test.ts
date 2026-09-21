@@ -59,6 +59,11 @@ describe("mapa central canon ↔ Backlog.md", () => {
 		expect(docs.map((d) => d.path)).toContain(".claude/specs/hidden-spec.md");
 	});
 
+	test("nó DONE aparece na lista e no quadro, na coluna Entregue (drummond-canon 1.34.13.1)", async () => {
+		const tasks = await createFileSystem(BASE_PROJECT).listTasks();
+		expect(tasks.find((t) => t.id === "1.2.9")?.status).toBe("Entregue");
+	});
+
 	test("o dataDir dos nós nunca aparece como documento, mesmo sob a pasta observada", async () => {
 		const docs = await createFileSystem(BASE_PROJECT).listDocuments();
 		expect(docs.some((d) => d.path?.includes("proj-canon"))).toBe(false);
