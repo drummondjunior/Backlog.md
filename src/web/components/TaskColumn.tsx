@@ -1,6 +1,7 @@
 import React from 'react';
 import { type Task } from '../../types';
 import { compareTaskIds, sortByPriority } from '../../utils/task-sorting';
+import { applyViewOrder } from '../lib/view-order';
 import type { ReorderTaskPayload } from '../lib/api';
 import { parseStoredUtcDate } from '../utils/date-display';
 import TaskCard from './TaskCard';
@@ -61,7 +62,7 @@ const sortByCreatedDate = (tasks: Task[], direction: CreatedDateSortDirection): 
 
 const TaskColumn: React.FC<TaskColumnProps> = ({
   title,
-  tasks,
+  tasks: incomingTasks,
   onTaskUpdate,
   onEditTask,
   onTaskReorder,
@@ -88,9 +89,11 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
   const [dropPosition, setDropPosition] = React.useState<{ index: number; position: 'before' | 'after' | 'self' } | null>(null);
   const [showMenu, setShowMenu] = React.useState(false);
+  // The sort menu only reorders what this column shows (1.34.13.1); drag and drop still persists through onTaskReorder.
+  const [viewOrder, setViewOrder] = React.useState<string[] | null>(null);
+  const tasks = applyViewOrder(incomingTasks, viewOrder);
   const menuRef = React.useRef<HTMLDivElement>(null);
   const columnActionsId = React.useId();
-  const canReorderColumn = Boolean(onTaskReorder) && tasks.length > 1 && tasks.every(task => !task.branch);
 
   React.useEffect(() => {
     if (!showMenu) return;
@@ -104,34 +107,17 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showMenu]);
 
-  const emitColumnReorder = (orderedTaskIds: string[]) => {
-    if (!onTaskReorder || !canReorderColumn) {
-      setShowMenu(false);
-      return;
-    }
-
-    const currentIds = tasks.map(t => t.id);
-    const hasChanged = orderedTaskIds.some((id, index) => id !== currentIds[index]);
-    const leadTaskId = orderedTaskIds[0];
-
-    if (hasChanged && leadTaskId) {
-      onTaskReorder({
-        taskId: leadTaskId,
-        targetStatus: title,
-        orderedTaskIds,
-        ...(targetMilestone !== undefined ? { targetMilestone } : {}),
-      });
-    }
-
+  const sortView = (sorted: Task[]) => {
+    setViewOrder(sorted.map(t => t.id));
     setShowMenu(false);
   };
 
   const handleSortByPriority = () => {
-    emitColumnReorder(sortByPriority(tasks, priorityOrder).map(t => t.id));
+    sortView(sortByPriority(tasks, priorityOrder));
   };
 
   const handleSortByCreatedDate = (direction: CreatedDateSortDirection) => {
-    emitColumnReorder(sortByCreatedDate(tasks, direction).map(t => t.id));
+    sortView(sortByCreatedDate(tasks, direction));
   };
 
   const getStatusBadgeClass = (status: string) => {
@@ -201,6 +187,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
       return;
     }
 
+    setViewOrder(null); // a drop persists its own order; the column goes back to the one the server returns
     onTaskReorder({
       taskId: droppedTaskId,
       targetStatus: title,
@@ -258,7 +245,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
           </span>
         </div>
         
-        {canReorderColumn && (
+        {tasks.length > 1 && (
           <div className="relative" ref={menuRef}>
             <button
               type="button"
